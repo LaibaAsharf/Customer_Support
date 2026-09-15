@@ -1,31 +1,30 @@
 import json
-
+from logger import logger
 
 from datetime import datetime
 from fastapi import Request
 from config.templates_config import templates
-
-
+from fastapi.staticfiles import StaticFiles
 
 from fastapi import FastAPI, status
 from starlette.responses import JSONResponse
 from utils import read_tickets_json_file
 from schema import TicketsInput
 app=FastAPI()
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-
-@app.get("/return tickets")
-def return_tickets():
-    print("/return tickets api is called")
-    file_read_ok, tickets, message = read_tickets_json_file()
-    if file_read_ok:
-        print("now returning tickets")
-        return {"tickets": tickets, "message": message}
+@app.get("/return-all-tickets")
+def return_all_tickets():
+    import logging
+    tickets=read_tickets_json_file()
+    all_tickets = []
+    if  tickets:
+        all_tickets.append(tickets)
+        logging.info("ticket found")
     else:
-        return {"tickets": [], "message": message}
+         logging.info("ticket  not found")
+    return {"tickets": tickets}
 
-
-# ================================
 
 @app.get("/tickets")
 def get_tickets(status: str = None,
@@ -65,19 +64,17 @@ def get_tickets(status: str = None,
             status_code=400,
             content={
                 "message": "tickets  not found",
-                    }
-        )
-# ===============================================
-
+            })
+############################################
 @app.post("/tickets")
 def create_ticket(ticket: TicketsInput):
     tickets = read_tickets_json_file()
     if tickets:
-        new_ticket_id = tickets[-1]["ticket_id"] + 1
+        new_ticket_id = tickets[-1]["id"] + 1
     else:
         new_ticket_id = 1
     new_ticket = {
-        "ticket_id": new_ticket_id,
+        "id": new_ticket_id,
         "customer_name": ticket.customer_name,
         "category": ticket.category,
         "priority": ticket.priority,
@@ -96,7 +93,7 @@ def create_ticket(ticket: TicketsInput):
             "ticket": new_ticket
         }
     )
-# ==============================================
+############################################################
 @app.get("/tickets/statistics")
 def ticket_statistics():
 
@@ -143,7 +140,43 @@ def ticket_statistics():
             "high_priority_tickets": high_priority_tickets
         }
     )
-# ============================================
+##############################################################################
+###########################################################
+@app.get("/tickets/statistics/category")
+def ticket_statistics():
+
+    tickets = read_tickets_json_file()
+    authentication = 0
+    payment = 0
+    account = 0
+    billing = 0
+    other = 0
+    technical = 0
+    for ticket in tickets:
+        if ticket["category"].lower() == "payment":
+            payment += 1
+        if ticket["category"].lower() == "authentication":
+            authentication += 1
+        if ticket["category"].lower() == "account":
+            account += 1
+        if ticket["category"].lower() == "billing":
+            billing += 1
+        if ticket["category"].lower() == "other":
+            other += 1
+        if ticket["category"].lower() == "technical":
+            technical += 1
+    return JSONResponse(
+        status_code=200,
+        content={
+            "authentication": authentication,
+            "payment": payment,
+            "technical": technical,
+            "account": account,
+            "billing": billing,
+            "other": other
+        }
+    )
+#####################################################
 @app.get("/tickets/statistics/priority")
 def ticket_statistics():
 
@@ -162,7 +195,7 @@ def ticket_statistics():
             "high": high
         }
     )
-# ==========================================
+#################################################################
 @app.post("/return-detail")
 def return_detail(tickets: TicketsInput):
         print("/return-detail api is called")
@@ -175,16 +208,36 @@ def return_detail(tickets: TicketsInput):
                 "patient_detail": tickets
             }
         )
-# ==================================
+################################################################# #
 @app.get("/dashboard")
-async def dashboard(request:Request):
-    tickets = read_tickets_json_file()
+async def dashboard(request:Request, ):
+    tickets=read_tickets_json_file()
+    print("TOTAL =", len(tickets))
+    total_tickets = len(tickets)
+    category_count = {}
+
+    for ticket in tickets:
+        category = ticket["category"].strip().lower()
+
+        if category not in category_count:
+            category_count[category] =0
+
+        category_count[category] += 1
+    print("category_count",category_count)
+    print("CATEGORY TOTAL =", sum(category_count.values()))
+    category_percentage={}
+    for category, count in category_count.items():
+        percentage = (count / total_tickets) * 100
+        category_percentage[category] = round(percentage, 2)
     return templates.TemplateResponse(
-      request=request,
-      name="dashboard.html",
-      context={
-          "tickets": tickets
-      },
+        request=request,
+        name="dashboard.html",
+        context={
+        "tickets":tickets,
+        "total_tickets":total_tickets,
+         "category_count":category_count,
+        "category_percentage":category_percentage
+         },
     )
 
 
